@@ -1,0 +1,16 @@
+[Unit]
+Description=The BLE Sensors Server
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=ROOTDIR
+ProtectSystem=strict
+PrivateTmp=true
+NoNewPrivileges=true
+RestrictAddressFamilies=AF_UNIX AF_INET
+ExecStart=ROOTDIR/.venv/bin/waitress-serve --host="127.0.0.1" --port=58080 'server:app'
+Restart=always
+
+[Install]
+WantedBy=default.target
