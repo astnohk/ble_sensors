@@ -183,11 +183,15 @@ void setup()
 void loop()
 {
   sensor.read_temperature();
-  int8_t *values = sensor.get_values();
+  int8_t adv_data[18];
+  adv_data[0] = 0xff;
+  adv_data[1] = 0xff;
   sensor.resample4x4();
+  int8_t *values = sensor.get_values();
+  memcpy(adv_data + 2, values, 16);
   Serial.println(values[0]);
   Bluefruit.Advertising.addFlags(BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE);
-  Bluefruit.Advertising.addData(0xFF, values, ADVERTISING_RAW_DATA_SIZE);
+  Bluefruit.Advertising.addData(0xFF, adv_data, 2 + ADVERTISING_RAW_DATA_SIZE);
   Bluefruit.Advertising.start(0);
 
   delay(1000);
@@ -199,5 +203,5 @@ void loop()
   conn_hdl = BLE_CONN_HANDLE_INVALID;
   Bluefruit.Advertising.stop();
   Bluefruit.Advertising.clearData();
-  delay(5000);
+  delay(30000);
 }
