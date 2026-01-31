@@ -115,7 +115,8 @@ public:
           bytes = 1;
         }
       }
-      this->values[i] = static_cast<int8_t>((0xC0 & (data[1] << 6)) | (0x3F & (data[0] >> 2)));
+      int8_t temph = static_cast<int8_t>(0xF0 & (data[1] << 4)) >> 4;
+      this->values[i] = static_cast<int8_t>((0xC0 & (temph << 6)) | (0x3F & (data[0] >> 2)));
     }
   }
 
