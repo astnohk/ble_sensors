@@ -115,9 +115,9 @@ public:
           bytes = 1;
         }
       }
-      int16_t temp = static_cast<int16_t>((data[1] << 4) | (data[0] << 4)) >> 4;
+      int16_t temp = static_cast<int16_t>((data[1] << 12) | (data[0] << 4)) >> 4;
       temp = temp > 0x7F ? 0x7F : temp;
-      this->values[i] = static_cast<int8_t>(0xFF & temp >> 2);
+      this->values[i] = static_cast<int8_t>(temp >> 2);
     }
   }
 
