@@ -1,6 +1,6 @@
 [Unit]
 Description=The BLE Sensors Server
-After=network.target
+After=bluetooth.target network.target
 
 [Service]
 Type=simple
