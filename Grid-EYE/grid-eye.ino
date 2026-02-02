@@ -175,7 +175,7 @@ void setup()
   Bluefruit.ScanResponse.addName();
   Bluefruit.Advertising.restartOnDisconnect(true);
   // Set advertising interval (in unit of 0.625ms):
-  Bluefruit.Advertising.setInterval(32, 244);
+  Bluefruit.Advertising.setInterval(244, 244);
   // number of seconds in fast mode:
   Bluefruit.Advertising.setFastTimeout(30);
 
@@ -196,7 +196,7 @@ void loop()
   Bluefruit.Advertising.addData(0xFF, adv_data, 2 + ADVERTISING_RAW_DATA_SIZE);
   Bluefruit.Advertising.start(0);
 
-  delay(1000);
+  delay(3000);
 
   if (conn_hdl != BLE_CONN_HANDLE_INVALID)
   {
