@@ -1,0 +1,346 @@
+#include <Wire.h>
+#include <bluefruit.h>
+
+uint16_t conn_hdl = BLE_CONN_HANDLE_INVALID;
+
+// Define hardware: LED and Button pins and states
+const int LED_PIN = 7;
+#define LED_OFF LOW
+#define LED_ON HIGH
+
+#define SDA_QWIIC_SDA 8
+#define SDA_QWIIC_SCL 11
+
+const int BUTTON_PIN = 13;
+#define BUTTON_ACTIVE LOW
+
+#define ADVERTISING_RAW_DATA_SIZE 16
+
+#define RV8803_SLAVE_ADDR 0x32
+//#define AMG8833_SLAVE_ADDR 0x68
+#define AMG8833_SLAVE_ADDR 0x69
+
+class RTC_RV8803
+{
+private:
+  TwoWire *wire;
+  uint8_t slave_addr;
+
+public:
+  void init(TwoWire *_wire, uint8_t _slave_addr)
+  {
+    this->wire = _wire;
+    this->slave_addr = _slave_addr;
+  }
+
+  void read_date(void)
+  {
+    uint8_t date[7];
+    int i = 0;
+    this->wire->beginTransmission(this->slave_addr);
+    this->wire->write(0x00); // SECONDS register
+    this->wire->requestFrom(this->slave_addr, 7);
+    while (this->wire->available())
+    {
+      if (i < 7)
+      {
+        date[i] = this->wire->read();
+        i++;
+      }
+      else
+      {
+        this->wire->read();
+      }
+    }
+  }
+
+  void set_timer_counter(uint16_t val)
+  {
+    this->wire->beginTransmission(this->slave_addr);
+    this->wire->write(0x0B); // TIMER COUNTER 0 register
+    this->wire->write(static_cast<uint8_t>(0xFF & val));
+    this->wire->write(static_cast<uint8_t>(0x0F & (val >> 8)));
+    this->wire->endTransmission();
+  }
+
+  void set_TE(bool enable)
+  {
+    // Read current register
+    uint8_t reg = 0x00;
+    this->wire->beginTransmission(this->slave_addr);
+    this->wire->write(0x0D); // EXTENSION register
+    this->wire->requestFrom(this->slave_addr, 1);
+    while (this->wire->available())
+    {
+      reg = this->wire->read();
+    }
+    // Write flag
+    this->wire->beginTransmission(this->slave_addr);
+    this->wire->write(0x0D); // EXTENSION register
+    this->wire->write((0xEF & reg) | (enable ? 0x10 : 0x00));
+    this->wire->endTransmission();
+  }
+
+  void set_FD(uint8_t val)
+  {
+    // Read current register
+    uint8_t reg = 0x00;
+    this->wire->beginTransmission(this->slave_addr);
+    this->wire->write(0x0D); // EXTENSION register
+    this->wire->requestFrom(this->slave_addr, 1);
+    while (this->wire->available())
+    {
+      reg = this->wire->read();
+    }
+    // Write flag
+    this->wire->beginTransmission(this->slave_addr);
+    this->wire->write(0x0D); // EXTENSION register
+    this->wire->write((0xF3 & reg) | (0x0C & (val << 2)));
+    this->wire->endTransmission();
+  }
+
+  void set_TD(uint8_t val)
+  {
+    // Read current register
+    uint8_t reg = 0x00;
+    this->wire->beginTransmission(this->slave_addr);
+    this->wire->write(0x0D); // EXTENSION register
+    this->wire->requestFrom(this->slave_addr, 1);
+    while (this->wire->available())
+    {
+      reg = this->wire->read();
+    }
+    // Write flag
+    this->wire->beginTransmission(this->slave_addr);
+    this->wire->write(0x0D); // EXTENSION register
+    this->wire->write((0xFC & reg) | (0x03 & val));
+    this->wire->endTransmission();
+  }
+
+  void set_TIE(bool enable)
+  {
+    // Read current register
+    uint8_t reg = 0x00;
+    this->wire->beginTransmission(this->slave_addr);
+    this->wire->write(0x0F); // CONTROL register
+    this->wire->requestFrom(this->slave_addr, 1);
+    while (this->wire->available())
+    {
+      reg = this->wire->read();
+    }
+    // Write flag
+    this->wire->beginTransmission(this->slave_addr);
+    this->wire->write(0x0D); // CONTROL register
+    this->wire->write((0xEF & reg) | (enable ? 0x10 : 0x00));
+    this->wire->endTransmission();
+  }
+
+  void clear_flag(void)
+  {
+    this->wire->beginTransmission(this->slave_addr);
+    this->wire->write(0x0E); // FLAG register
+    this->wire->write(0x00);
+    this->wire->endTransmission();
+  }
+
+  uint8_t read_flag(void)
+  {
+    uint8_t reg = 0x00;
+    this->wire->beginTransmission(this->slave_addr);
+    this->wire->write(0x0E); // FLAG register
+    this->wire->requestFrom(this->slave_addr, 1);
+    while (this->wire->available())
+    {
+      reg = this->wire->read();
+    }
+    return reg;
+  }
+};
+
+class GridEYE
+{
+private:
+  TwoWire *wire;
+  uint8_t slave_addr;
+  int8_t values[64];
+
+public:
+  void init(TwoWire *_wire, uint8_t _slave_addr)
+  {
+    this->wire = _wire;
+    this->slave_addr = _slave_addr;
+  }
+
+  uint8_t values_size(void)
+  {
+    return 64;
+  }
+
+  int8_t *get_values(void)
+  {
+    return this->values;
+  }
+
+  void reset(void)
+  {
+    this->wire->beginTransmission(this->slave_addr);
+    this->wire->write(0x01);
+    this->wire->write(0x30);
+    this->wire->endTransmission();
+  }
+
+  void set_framerate(bool enable_high_framerate)
+  {
+    this->wire->beginTransmission(this->slave_addr);
+    this->wire->write(0x02);
+    this->wire->write(enable_high_framerate ? 0x00 : 0x01);
+    this->wire->endTransmission();
+  }
+
+  void set_average(bool enable)
+  {
+    uint8_t data[10] = {0x1F, 0x50, 0x1F, 0x45, 0x1F, 0x57, 0x07, 0x00, 0x1F, 0x00};
+    data[7] = enable ? 0x20 : 0x00;
+    this->wire->beginTransmission(this->slave_addr);
+    this->wire->write(data, 10);
+    this->wire->endTransmission();
+  }
+
+  uint8_t read_status(void)
+  {
+    uint8_t data;
+    this->wire->beginTransmission(this->slave_addr);
+    this->wire->write(0x04); // Register addres 0x04
+    this->wire->endTransmission();
+    this->wire->requestFrom(this->slave_addr, 1);
+    while (this->wire->available())
+    {
+      data = this->wire->read();
+    }
+    return data;
+  }
+
+  void read_temperature(void)
+  {
+    size_t i;
+    int8_t bytes;
+    uint8_t data[2];
+    for (i = 0; i < 64; i++)
+    {
+      this->wire->beginTransmission(this->slave_addr);
+      this->wire->write(0x80 + 2*i); // Start register addres 0x80
+      this->wire->endTransmission();
+      this->wire->requestFrom(this->slave_addr, 2);
+      bytes = 0;
+      while (this->wire->available())
+      {
+        data[bytes] = this->wire->read();
+        if (bytes < 1)
+        {
+          bytes = 1;
+        }
+      }
+      int16_t temp = static_cast<int16_t>((data[1] << 12) | (data[0] << 4)) >> 4;
+      temp = temp > 0x7F ? 0x7F : temp;
+      this->values[i] = static_cast<int8_t>(temp >> 2);
+    }
+  }
+
+  void resample4x4()
+  {
+    // Resample values in-place
+    for (int i = 0; i < 4; i++)
+    {
+      for (int k = 0; k < 4; k++)
+      {
+        this->values[4 * i + k] = max(
+          max(this->values[8 * (2 * i) + 2 * k], this->values[8 * (2 * i) + 2 * k + 1]),
+          max(this->values[8 * (2 * i + 1) + 2 * k], this->values[8 * (2 * i + 1) + 2 * k + 1]));
+      }
+    }
+  }
+};
+
+RTC_RV8803 rtc;
+GridEYE sensor;
+
+void connect_callback(uint16_t conn_handle)
+{
+  conn_hdl = conn_handle;
+}
+
+void setup()
+{
+  uint32_t err;
+
+  delay(500);
+  // Initialize hardware:
+  // Serial is the USB serial port
+  Serial.begin(9600);
+  // Initialize I2C
+  Wire.begin();
+  Wire.setPins(SDA_QWIIC_SDA, SDA_QWIIC_SCL);
+  // Turn on-board blue LED off
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, LED_OFF);
+  // Set Button to input mode
+  //pinMode(BUTTON_PIN, INPUT);
+  nrf_gpio_cfg_sense_input(BUTTON_PIN, NRF_GPIO_PIN_PULLUP, NRF_GPIO_PIN_SENSE_LOW); // Receive reset signal as low enabled (neg INT)
+
+  // RTC
+  rtc.init(&Wire, RV8803_SLAVE_ADDR);
+  rtc.set_timer_counter(30); // 30sec time interval
+  rtc.set_TD(2); // 1Hz clock frequency
+  rtc.set_TE(true); // Enable countdown timer interrupt
+  rtc.set_TIE(true); // Enable countdown timer interrupt signal on INT pin
+  // Thermal sensor
+  sensor.init(&Wire, AMG8833_SLAVE_ADDR);
+  sensor.reset();
+  sensor.set_framerate(false);
+  sensor.set_average(true);
+
+  // Initialize Bluetooth:
+  Bluefruit.begin();
+  Bluefruit.Periph.setConnectCallback(connect_callback);
+  // Set max power. Accepted values are: -40, -30, -20, -16, -12, -8, -4, 0, 4
+  Bluefruit.setTxPower(4);
+  Bluefruit.setName("SparkFun_nRF52840_Grid-EYE");
+
+  // Start advertising device
+  Bluefruit.Advertising.addTxPower();
+  Bluefruit.ScanResponse.addName();
+  Bluefruit.Advertising.restartOnDisconnect(true);
+  // Set advertising interval (in unit of 0.625ms):
+  Bluefruit.Advertising.setInterval(244, 244);
+  // number of seconds in fast mode:
+  Bluefruit.Advertising.setFastTimeout(30);
+
+  Serial.write("setup is done.\n");
+}
+
+void loop()
+{
+  sensor.read_temperature();
+  int8_t adv_data[18];
+  adv_data[0] = 0xff;
+  adv_data[1] = 0xff;
+  sensor.resample4x4();
+  int8_t *values = sensor.get_values();
+  memcpy(adv_data + 2, values, 16);
+  Serial.println(values[0]);
+  Bluefruit.Advertising.addFlags(BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE);
+  Bluefruit.Advertising.addData(0xFF, adv_data, 2 + ADVERTISING_RAW_DATA_SIZE);
+  Bluefruit.Advertising.start(0);
+
+  delay(3000);
+
+  if (conn_hdl != BLE_CONN_HANDLE_INVALID)
+  {
+    Bluefruit.disconnect(conn_hdl);
+  }
+  conn_hdl = BLE_CONN_HANDLE_INVALID;
+  Bluefruit.Advertising.stop();
+  Bluefruit.Advertising.clearData();
+  
+  sd_power_system_off();
+}
