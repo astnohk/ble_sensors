@@ -1,18 +1,3 @@
-/* BLE Example for SparkFun Pro nRF52840 Mini 
- *  
- *  This example demonstrates how to use the Bluefruit
- *  library to both send and receive data to the
- *  nRF52840 via BLE.
- *  
- *  Using a BLE development app like Nordic's nRF Connect
- *  https://www.nordicsemi.com/eng/Products/Nordic-mobile-Apps/nRF-Connect-for-Mobile
- *  The BLE UART service can be written to to turn the
- *  on-board LED on/off, or read from to monitor the 
- *  status of the button.
- *  
- *  See the tutorial for more information:
- *  https://learn.sparkfun.com/tutorials/nrf52840-development-with-arduino-and-circuitpython#arduino-examples  
-*/
 #include <Wire.h>
 #include <bluefruit.h>
 
