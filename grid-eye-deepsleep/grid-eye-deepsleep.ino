@@ -230,7 +230,13 @@ public:
           bytes = 1;
         }
       }
-      int16_t temp = static_cast<int16_t>((data[1] << 12) | (data[0] << 4)) >> 4;
+      int16_t temp = static_cast<int16_t>((data[1] << 8) | data[0]);
+      // Check 12-bits 2's complement
+      if (temp > 0x0800)
+      {
+        temp = (0x0FFF & temp) - 0x1000;
+      }
+      // Clamp at 0x7F (clamp within 10-bits because it should be 8-bits after 2-bits right shifting)
       temp = temp > 0x7F ? 0x7F : temp;
       this->values[i] = static_cast<int8_t>(temp >> 2);
     }
