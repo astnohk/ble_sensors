@@ -1,6 +1,8 @@
 #include <Wire.h>
 #include <bluefruit.h>
 
+//#define USE_SERIAL
+
 uint16_t conn_hdl = BLE_CONN_HANDLE_INVALID;
 
 // Define hardware: LED and Button pins and states
@@ -13,6 +15,7 @@ const int LED_PIN = 7;
 
 const int BUTTON_PIN = 13;
 #define BUTTON_ACTIVE LOW
+const int INTERRUPT_PIN = 5;
 
 #define ADVERTISING_RAW_DATA_SIZE 16
 
@@ -39,6 +42,7 @@ public:
     int i = 0;
     this->wire->beginTransmission(this->slave_addr);
     this->wire->write(0x00); // SECONDS register
+    this->wire->endTransmission();
     this->wire->requestFrom(this->slave_addr, 7);
     while (this->wire->available())
     {
@@ -63,12 +67,13 @@ public:
     this->wire->endTransmission();
   }
 
-  void set_TE(bool enable)
+  void set_TE(bool te)
   {
     // Read current register
     uint8_t reg = 0x00;
     this->wire->beginTransmission(this->slave_addr);
     this->wire->write(0x0D); // EXTENSION register
+    this->wire->endTransmission();
     this->wire->requestFrom(this->slave_addr, 1);
     while (this->wire->available())
     {
@@ -77,34 +82,17 @@ public:
     // Write flag
     this->wire->beginTransmission(this->slave_addr);
     this->wire->write(0x0D); // EXTENSION register
-    this->wire->write((0xEF & reg) | (enable ? 0x10 : 0x00));
+    this->wire->write((0xEF & reg) | (te ? 0x10 : 0x00));
     this->wire->endTransmission();
   }
 
-  void set_FD(uint8_t val)
+  void set_TD(uint8_t td)
   {
     // Read current register
     uint8_t reg = 0x00;
     this->wire->beginTransmission(this->slave_addr);
     this->wire->write(0x0D); // EXTENSION register
-    this->wire->requestFrom(this->slave_addr, 1);
-    while (this->wire->available())
-    {
-      reg = this->wire->read();
-    }
-    // Write flag
-    this->wire->beginTransmission(this->slave_addr);
-    this->wire->write(0x0D); // EXTENSION register
-    this->wire->write((0xF3 & reg) | (0x0C & (val << 2)));
     this->wire->endTransmission();
-  }
-
-  void set_TD(uint8_t val)
-  {
-    // Read current register
-    uint8_t reg = 0x00;
-    this->wire->beginTransmission(this->slave_addr);
-    this->wire->write(0x0D); // EXTENSION register
     this->wire->requestFrom(this->slave_addr, 1);
     while (this->wire->available())
     {
@@ -113,7 +101,7 @@ public:
     // Write flag
     this->wire->beginTransmission(this->slave_addr);
     this->wire->write(0x0D); // EXTENSION register
-    this->wire->write((0xFC & reg) | (0x03 & val));
+    this->wire->write((0xFC & reg) | (0x03 & td));
     this->wire->endTransmission();
   }
 
@@ -123,6 +111,7 @@ public:
     uint8_t reg = 0x00;
     this->wire->beginTransmission(this->slave_addr);
     this->wire->write(0x0F); // CONTROL register
+    this->wire->endTransmission();
     this->wire->requestFrom(this->slave_addr, 1);
     while (this->wire->available())
     {
@@ -130,8 +119,8 @@ public:
     }
     // Write flag
     this->wire->beginTransmission(this->slave_addr);
-    this->wire->write(0x0D); // CONTROL register
-    this->wire->write((0xEF & reg) | (enable ? 0x10 : 0x00));
+    this->wire->write(0x0F); // CONTROL register
+    this->wire->write((0xEE & reg) | (enable ? 0x10 : 0x00)); // Set TIE with clearing RESET flag
     this->wire->endTransmission();
   }
 
@@ -148,6 +137,7 @@ public:
     uint8_t reg = 0x00;
     this->wire->beginTransmission(this->slave_addr);
     this->wire->write(0x0E); // FLAG register
+    this->wire->endTransmission();
     this->wire->requestFrom(this->slave_addr, 1);
     while (this->wire->available())
     {
@@ -271,28 +261,44 @@ void connect_callback(uint16_t conn_handle)
 
 void setup()
 {
-  uint32_t err;
-
-  delay(500);
   // Initialize hardware:
+#ifdef USE_SERIAL
   // Serial is the USB serial port
   Serial.begin(9600);
+  time_t timeout = millis();
+  while (!Serial)
+  {
+    if ((millis() - timeout) < 2000)
+    {
+      delay(100);
+    }
+    else
+    {
+      break;
+    }
+  }
+  Serial.print("hello\n");
+#else
+  delay(500);
+#endif
   // Initialize I2C
-  Wire.begin();
   Wire.setPins(SDA_QWIIC_SDA, SDA_QWIIC_SCL);
+  Wire.begin();
   // Turn on-board blue LED off
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, LED_OFF);
   // Set Button to input mode
-  //pinMode(BUTTON_PIN, INPUT);
-  nrf_gpio_cfg_sense_input(BUTTON_PIN, NRF_GPIO_PIN_PULLUP, NRF_GPIO_PIN_SENSE_LOW); // Receive reset signal as low enabled (neg INT)
+  pinMode(BUTTON_PIN, INPUT);
+  nrf_gpio_cfg_sense_input(INTERRUPT_PIN, NRF_GPIO_PIN_PULLUP, NRF_GPIO_PIN_SENSE_LOW); // Receive reset signal as low enabled (neg INT)
 
   // RTC
   rtc.init(&Wire, RV8803_SLAVE_ADDR);
+  rtc.set_TIE(false); // Disable countdown timer interrupt signal output on INT pin
+  rtc.set_TE(false); // Disable countdown timer
+  rtc.clear_flag(); // Clear all flags
   rtc.set_timer_counter(30); // 30sec time interval
-  rtc.set_TD(2); // 1Hz clock frequency
-  rtc.set_TE(true); // Enable countdown timer interrupt
-  rtc.set_TIE(true); // Enable countdown timer interrupt signal on INT pin
+  rtc.set_TD(2); // Set 1Hz clock frequency
+
   // Thermal sensor
   sensor.init(&Wire, AMG8833_SLAVE_ADDR);
   sensor.reset();
@@ -315,21 +321,25 @@ void setup()
   // number of seconds in fast mode:
   Bluefruit.Advertising.setFastTimeout(30);
 
+  delay(1000); // Wait for sensing
+
+#ifdef USE_SERIAL
   Serial.write("setup is done.\n");
+#endif
 }
 
 void loop()
 {
   sensor.read_temperature();
   int8_t adv_data[18];
-  adv_data[0] = 0xff;
-  adv_data[1] = 0xff;
+  adv_data[0] = 0xff; // UUID
+  adv_data[1] = 0xff; // UUID
   sensor.resample4x4();
   int8_t *values = sensor.get_values();
-  memcpy(adv_data + 2, values, 16);
-  Serial.println(values[0]);
-  Bluefruit.Advertising.addFlags(BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE);
-  Bluefruit.Advertising.addData(0xFF, adv_data, 2 + ADVERTISING_RAW_DATA_SIZE);
+  memcpy(adv_data + 2, values, 16); // Put sensor data just after UUID values
+
+  Bluefruit.Advertising.addFlags(BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE); // Use General Discovery Mode to send advertising unlimitedly
+  Bluefruit.Advertising.addData(0xFF, adv_data, 2 + ADVERTISING_RAW_DATA_SIZE); // Put sensor data on advertising
   Bluefruit.Advertising.start(0);
 
   delay(3000);
@@ -341,6 +351,8 @@ void loop()
   conn_hdl = BLE_CONN_HANDLE_INVALID;
   Bluefruit.Advertising.stop();
   Bluefruit.Advertising.clearData();
-  
+
+  rtc.set_TIE(true); // Enable RTC countdown timer interrupt signal output on INT pin
+  rtc.set_TE(true); // Enable RTC countdown timer interrupt
   sd_power_system_off();
 }
