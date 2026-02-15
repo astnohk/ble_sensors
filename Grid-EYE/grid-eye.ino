@@ -8,8 +8,8 @@ const int LED_PIN = 7;
 #define LED_OFF LOW
 #define LED_ON HIGH
 
-#define SDA_QWIIC_SDA 8
-#define SDA_QWIIC_SCL 11
+#define QWIIC_SDA 8
+#define QWIIC_SCL 11
 
 const int BUTTON_PIN = 13;
 #define BUTTON_ACTIVE LOW
@@ -139,7 +139,7 @@ void setup()
   Serial.begin(9600);
   // Initialize I2C
   Wire.begin();
-  Wire.setPins(SDA_QWIIC_SDA, SDA_QWIIC_SCL);
+  Wire.setPins(QWIIC_SDA, QWIIC_SCL);
   // Turn on-board blue LED off
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, LED_OFF);
