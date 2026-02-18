@@ -33,14 +33,15 @@ class BLEScanner:
             for device, advertise_data in devices.values():
                 if 0xffff in advertise_data.manufacturer_data.keys():
                     bytes = advertise_data.manufacturer_data[0xffff]
-                    thermal_data = [0 for i in range(len(bytes))]
-                    for i in range(len(bytes)):
-                        thermal_data[i] = int(bytes[i])
-                    current_data[device.address] = {
-                        "name": device.name,
-                        "timestamp": now.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
-                        "thermal_data": thermal_data,
-                    }
+                    if len(bytes) == 16:
+                        thermal_data = [0 for i in range(len(bytes))]
+                        for i in range(len(bytes)):
+                            thermal_data[i] = int(bytes[i])
+                        current_data[device.address] = {
+                            "name": device.name,
+                            "timestamp": now.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+                            "thermal_data": thermal_data,
+                        }
         except Exception as err:
             logger.error("Failed to read advertisement data.")
             logger.error(err)
