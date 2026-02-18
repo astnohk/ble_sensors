@@ -137,9 +137,21 @@ void setup()
   // Initialize hardware:
   // Serial is the USB serial port
   Serial.begin(9600);
+
   // Initialize I2C
+#ifdef ARDUINO_NRF52840_ITSYBITSY
+  //// Adafruit ItsyBitsy
+  Wire.setPins(21, 22); // SDA: 21, SCL: 22
+#endif
+#ifdef ARDUINO_NRF52840_FEATHER
+# if USB_VID == 0x239A
+# elif USB_VID == 0x1B4F
+  //// SparkFun
+  Wire.setPins(8, 11); // SDA: 8, SCL: 11
+# endif
+#endif
   Wire.begin();
-  Wire.setPins(QWIIC_SDA, QWIIC_SCL);
+
   // Turn on-board blue LED off
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, LED_OFF);

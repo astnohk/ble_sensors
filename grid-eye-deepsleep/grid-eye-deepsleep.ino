@@ -292,11 +292,11 @@ void setup()
   Wire.setPins(21, 22); // SDA: 21, SCL: 22
 #endif
 #ifdef ARDUINO_NRF52840_FEATHER
-#if USB_VID == 0x239A
-#elif USB_VID == 0x1B4F
+# if USB_VID == 0x239A
+# elif USB_VID == 0x1B4F
   //// SparkFun
   Wire.setPins(8, 11); // SDA: 8, SCL: 11
-#endif
+# endif
 #endif
   Wire.begin();
 
