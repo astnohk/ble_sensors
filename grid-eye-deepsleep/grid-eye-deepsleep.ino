@@ -10,9 +10,6 @@ const int LED_PIN = 7;
 #define LED_OFF LOW
 #define LED_ON HIGH
 
-#define QWIIC_SDA 8
-#define QWIIC_SCL 11
-
 const int BUTTON_PIN = 13;
 #define BUTTON_ACTIVE LOW
 const int INTERRUPT_PIN = 5;
@@ -288,8 +285,21 @@ void setup()
   delay(500);
 #endif
   // Initialize I2C
-  Wire.setPins(QWIIC_SDA, QWIIC_SCL);
+  
+  // I2C
+#ifdef ARDUINO_NRF52840_ITSYBITSY
+  //// Adafruit ItsyBitsy
+  Wire.setPins(21, 22); // SDA: 21, SCL: 22
+#endif
+#ifdef ARDUINO_NRF52840_FEATHER
+#if USB_VID == 0x239A
+#elif USB_VID == 0x1B4F
+  //// SparkFun
+  Wire.setPins(8, 11); // SDA: 8, SCL: 11
+#endif
+#endif
   Wire.begin();
+
   // Turn on-board blue LED off
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, LED_OFF);
