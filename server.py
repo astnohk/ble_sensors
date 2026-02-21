@@ -49,7 +49,7 @@ class BLEScanner:
 async def update_sensors(scanner: BLEScanner):
     while True:
         await scanner.update_grid_eye()
-        await asyncio.sleep(5)
+        await asyncio.sleep(2)
 
 def start_ble_receiver(scanner: BLEScanner):
     asyncio.run(update_sensors(scanner))
