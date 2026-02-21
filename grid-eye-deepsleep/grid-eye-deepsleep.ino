@@ -5,14 +5,36 @@
 
 uint16_t conn_hdl = BLE_CONN_HANDLE_INVALID;
 
-// Define hardware: LED and Button pins and states
-const int LED_PIN = 7;
-#define LED_OFF LOW
-#define LED_ON HIGH
+#define RTC_TIME_INTERVAL 60
 
-const int BUTTON_PIN = 13;
-#define BUTTON_ACTIVE LOW
-const int INTERRUPT_PIN = 5;
+// Define hardware: LED and Button pins and states
+#ifdef ARDUINO_NRF52840_ITSYBITSY
+  //// Adafruit ItsyBitsy
+  const int LED_PIN = 3;
+# define LED_OFF LOW
+# define LED_ON HIGH
+
+  const int BUTTON_PIN = 4;
+# define BUTTON_ACTIVE LOW
+
+  const int INTERRUPT_NRF_PORT = 1;
+  const int INTERRUPT_NRF_PIN = 8;
+#endif
+#ifdef ARDUINO_NRF52840_FEATHER
+# if USB_VID == 0x239A
+# elif USB_VID == 0x1B4F
+    //// SparkFun
+    const int LED_PIN = 7;
+#   define LED_OFF LOW
+#   define LED_ON HIGH
+
+    const int BUTTON_PIN = 13;
+#   define BUTTON_ACTIVE LOW
+
+    const int INTERRUPT_NRF_PORT = 0;
+    const int INTERRUPT_NRF_PIN = 5;
+# endif
+#endif
 
 #define ADVERTISING_RAW_DATA_SIZE 16
 
@@ -305,14 +327,14 @@ void setup()
   digitalWrite(LED_PIN, LED_OFF);
   // Set Button to input mode
   pinMode(BUTTON_PIN, INPUT);
-  nrf_gpio_cfg_sense_input(INTERRUPT_PIN, NRF_GPIO_PIN_PULLUP, NRF_GPIO_PIN_SENSE_LOW); // Receive reset signal as low enabled (neg INT)
+  nrf_gpio_cfg_sense_input(NRF_GPIO_PIN_MAP(INTERRUPT_NRF_PORT, INTERRUPT_NRF_PIN), NRF_GPIO_PIN_PULLUP, NRF_GPIO_PIN_SENSE_LOW); // Receive reset signal as low enabled (neg INT)
 
   // RTC
   rtc.init(&Wire, RV8803_SLAVE_ADDR);
   rtc.set_TIE(false); // Disable countdown timer interrupt signal output on INT pin
   rtc.set_TE(false); // Disable countdown timer
   rtc.clear_flag(); // Clear all flags
-  rtc.set_timer_counter(30); // 30sec time interval
+  rtc.set_timer_counter(RTC_TIME_INTERVAL); // 30sec time interval
   rtc.set_TD(2); // Set 1Hz clock frequency
 
   // Thermal sensor
@@ -337,7 +359,7 @@ void setup()
   // number of seconds in fast mode:
   Bluefruit.Advertising.setFastTimeout(30);
 
-  delay(500); // Wait for sensing
+  delay(1000); // Wait for sensing
 
 #ifdef USE_SERIAL
   Serial.write("setup is done.\n");
