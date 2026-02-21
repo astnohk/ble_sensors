@@ -5,7 +5,10 @@
 
 uint16_t conn_hdl = BLE_CONN_HANDLE_INVALID;
 
+// RTC timer interrupt interval [sec]
 #define RTC_TIME_INTERVAL 60
+// Duration of transmitting BLE advertising [millisec]
+#define BLE_ADVERTISING_DURATION 5000
 
 // Define hardware: LED and Button pins and states
 #ifdef ARDUINO_NRF52840_ITSYBITSY
@@ -333,9 +336,9 @@ void setup()
   rtc.init(&Wire, RV8803_SLAVE_ADDR);
   rtc.set_TIE(false); // Disable countdown timer interrupt signal output on INT pin
   rtc.set_TE(false); // Disable countdown timer
-  rtc.clear_flag(); // Clear all flags
-  rtc.set_timer_counter(RTC_TIME_INTERVAL); // 30sec time interval
   rtc.set_TD(2); // Set 1Hz clock frequency
+  rtc.set_timer_counter(RTC_TIME_INTERVAL); // 30sec time interval
+  rtc.clear_flag(); // Clear all flags
 
   // Thermal sensor
   sensor.init(&Wire, AMG8833_SLAVE_ADDR);
@@ -348,7 +351,7 @@ void setup()
   Bluefruit.Periph.setConnectCallback(connect_callback);
   // Set max power. Accepted values are: -40, -30, -20, -16, -12, -8, -4, 0, 4
   Bluefruit.setTxPower(4);
-  Bluefruit.setName("SparkFun_nRF52840_Grid-EYE");
+  Bluefruit.setName("SparkFun_nRF52840_Ther");
 
   // Start advertising device
   Bluefruit.Advertising.addTxPower();
@@ -380,7 +383,7 @@ void loop()
   Bluefruit.Advertising.addData(0xFF, adv_data, 2 + ADVERTISING_RAW_DATA_SIZE); // Put sensor data on advertising
   Bluefruit.Advertising.start(0);
 
-  delay(3000);
+  delay(BLE_ADVERTISING_DURATION);
 
   if (conn_hdl != BLE_CONN_HANDLE_INVALID)
   {
