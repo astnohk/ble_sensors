@@ -13,13 +13,16 @@ logging.basicConfig(level=logging.INFO)
 
 app = Flask(__name__)
 
-current_data = {}
+current_data = {
+    "temp-humid": {},
+    "grid-eyes": {},
+}
 
 class BLEScanner:
     def __init__(self):
         self.current_data = {}
 
-    async def update_grid_eye(self):
+    async def update(self):
         try:
             devices = await bleak.BleakScanner.discover(
                 return_adv=True,
@@ -31,13 +34,24 @@ class BLEScanner:
         now = datetime.datetime.now(tz=datetime.timezone.utc)
         try:
             for device, advertise_data in devices.values():
+                if 0xf4ff in advertise_data.manufacturer_data.keys():
+                    bytes = advertise_data.manufacturer_data[0xf4ff]
+                    if len(bytes) == 4:
+                        temperature = ((bytes[0] << 8) | bytes[1]) / 4.0
+                        humidity = ((bytes[2] << 8) | bytes[3]) / 4.0
+                        current_data["temp-humid"][device.address] = {
+                            "name": device.name,
+                            "timestamp": now.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+                            "temperature": temperature,
+                            "humidity": humidity,
+                        }
                 if 0xffff in advertise_data.manufacturer_data.keys():
                     bytes = advertise_data.manufacturer_data[0xffff]
                     if len(bytes) == 16:
                         thermal_data = [0 for i in range(len(bytes))]
                         for i in range(len(bytes)):
                             thermal_data[i] = int(bytes[i])
-                        current_data[device.address] = {
+                        current_data["grid-eyes"][device.address] = {
                             "name": device.name,
                             "timestamp": now.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
                             "thermal_data": thermal_data,
@@ -48,7 +62,7 @@ class BLEScanner:
 
 async def update_sensors(scanner: BLEScanner):
     while True:
-        await scanner.update_grid_eye()
+        await scanner.update()
         await asyncio.sleep(2)
 
 def start_ble_receiver(scanner: BLEScanner):
@@ -58,9 +72,14 @@ def start_ble_receiver(scanner: BLEScanner):
 def root():
     return "sensor."
 
+@app.route("/api/get-temp-humid")
+def temp_humid():
+    tmp = copy.deepcopy(current_data["temp-humid"])
+    return jsonify(tmp)
+
 @app.route("/api/get-grid-eyes")
 def grid_eyes():
-    tmp = copy.deepcopy(current_data)
+    tmp = copy.deepcopy(current_data["grid-eyes"])
     return jsonify(tmp)
 
 # Scanner threads
