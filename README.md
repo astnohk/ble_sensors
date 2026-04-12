@@ -24,6 +24,6 @@ $ source venv/bin/activate
 Install dependencies
 
 ```
-$ python3 -m pip install bleak
+$ python3 -m pip install .
 ```
 
