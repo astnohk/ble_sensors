@@ -475,7 +475,7 @@ void loop()
 #endif
   // Send advertising data
   adv_data[0] = 0xff; // UUID
-  adv_data[1] = 0xff; // UUID
+  adv_data[1] = 0xfe; // UUID
   memcpy(adv_data + 2, header, 6); // Put sensor data just after UUID values
   sendDataWithAdvertising(0xFF, adv_data, ADV_DATA_LENGTH, BLE_ADVERTISING_DURATION);
   // Kick WDT
@@ -504,7 +504,7 @@ void loop()
   header[5] = crc8(values, 16);
   // Send header
   adv_data[0] = 0xff; // UUID
-  adv_data[1] = 0xff; // UUID
+  adv_data[1] = 0xfe; // UUID
   memcpy(adv_data + 2, header, 6); // Put sensor data just after UUID values
   sendDataWithAdvertising(0xFF, adv_data, ADV_DATA_LENGTH, BLE_ADVERTISING_DURATION);
   // Kick WDT
