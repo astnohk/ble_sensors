@@ -2,8 +2,12 @@
 #include <bluefruit.h>
 
 //#define USE_SERIAL
+#define USE_8x8
 
 uint16_t conn_hdl = BLE_CONN_HANDLE_INVALID;
+
+#define CRC8 0xEA
+#define CRC_BITS 8
 
 // RTC timer interrupt interval [sec]
 #define RTC_TIME_INTERVAL 60
@@ -40,6 +44,7 @@ uint16_t conn_hdl = BLE_CONN_HANDLE_INVALID;
 #endif
 
 #define ADVERTISING_RAW_DATA_SIZE 16
+#define ADV_DATA_LENGTH (2 + ADVERTISING_RAW_DATA_SIZE)
 
 #define RV8803_SLAVE_ADDR 0x32
 //#define AMG8833_SLAVE_ADDR 0x68
@@ -334,11 +339,10 @@ void setup()
 
   // RTC
   rtc.init(&Wire, RV8803_SLAVE_ADDR);
+  rtc.clear_flag(); // Clear all flags
   rtc.set_TIE(false); // Disable countdown timer interrupt signal output on INT pin
   rtc.set_TE(false); // Disable countdown timer
   rtc.set_TD(2); // Set 1Hz clock frequency
-  rtc.set_timer_counter(RTC_TIME_INTERVAL); // 30sec time interval
-  rtc.clear_flag(); // Clear all flags
 
   // Thermal sensor
   sensor.init(&Wire, AMG8833_SLAVE_ADDR);
@@ -369,16 +373,8 @@ void setup()
 #endif
 }
 
-void loop()
+void sendDataWithAdvertising(uint8_t type, int8_t *adv_data, size_t len, uint32_t duration)
 {
-  sensor.read_temperature();
-  int8_t adv_data[18];
-  adv_data[0] = 0xff; // UUID
-  adv_data[1] = 0xff; // UUID
-  sensor.resample4x4();
-  int8_t *values = sensor.get_values();
-  memcpy(adv_data + 2, values, 16); // Put sensor data just after UUID values
-
   Bluefruit.Advertising.addFlags(BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE); // Use General Discovery Mode to send advertising unlimitedly
   Bluefruit.Advertising.addData(0xFF, adv_data, 2 + ADVERTISING_RAW_DATA_SIZE); // Put sensor data on advertising
   Bluefruit.Advertising.start(0);
@@ -392,7 +388,104 @@ void loop()
   conn_hdl = BLE_CONN_HANDLE_INVALID;
   Bluefruit.Advertising.stop();
   Bluefruit.Advertising.clearData();
+}
 
+uint8_t
+crc8(uint8_t *val, size_t len)
+{
+  const size_t crc_bits = 8; // CRC-8
+  uint8_t remainder = 0;
+  uint8_t bucket = 0;
+  size_t bytes = 0;
+  int msb_flag = 0;
+
+  if (val == NULL)
+  {
+    return 0;
+  }
+  // Calculate CRC remainder
+  if (len > 0)
+  {
+    remainder = val[0];
+    bytes = 1;
+  }
+  for (; bytes <= len; bytes++)
+  {
+    if (bytes < len)
+    {
+      bucket = val[bytes];
+    }
+    else
+    {
+      bucket = 0;
+    }
+    for (int b = 0; b < crc_bits; b++)
+    {
+      msb_flag = remainder & 0x80;
+      remainder = (remainder << 1) | ((bucket & 0x80) ? 1 : 0);
+      bucket <<= 1;
+      if (msb_flag)
+      {
+        remainder = remainder ^ CRC8;
+      }
+    }
+  }
+  return remainder;
+}
+
+void loop()
+{
+  // Send 8x8 with multiple advertising
+  sensor.read_temperature();
+  int8_t adv_data[ADV_DATA_LENGTH];
+#ifdef USE_8x8
+  int8_t *values = sensor.get_values();
+  // Generate header
+  int8_t header[ADVERTISING_RAW_DATA_SIZE];
+  header[0] = 4; // packet length
+  header[1] = 'C';
+  header[2] = 'R';
+  header[3] = 'C';
+  header[4] = 0x00;
+  header[5] = crc8((uint8_t *)values, 64);
+  // Send advertising data
+  adv_data[0] = 0xff; // UUID
+  adv_data[1] = 0xff; // UUID
+  memcpy(adv_data + 2, header, 6); // Put sensor data just after UUID values
+  sendDataWithAdvertising(0xFF, adv_data, ADV_DATA_LENGTH, BLE_ADVERTISING_DURATION);
+  // Send data
+  for (int i = 0; i < 4; i++)
+  {
+    adv_data[0] = 0xff; // UUID
+    adv_data[1] = i; // UUID
+    memcpy(adv_data + 2, values + 16 * i, 16); // Put sensor data just after UUID values
+    sendDataWithAdvertising(0xFF, adv_data, ADV_DATA_LENGTH, BLE_ADVERTISING_DURATION);
+  }
+#else
+  // send only 4x4 resampled data
+  sensor.resample4x4();
+  int8_t *values = sensor.get_values();
+  // Generate header
+  int8_t header[ADVERTISING_RAW_DATA_SIZE];
+  header[0] = 1; // packet length
+  header[1] = 'C';
+  header[2] = 'R';
+  header[3] = 'C';
+  header[4] = 0x00;
+  header[5] = crc8((uint8_t *)values, 16);
+  // Send header
+  adv_data[0] = 0xff; // UUID
+  adv_data[1] = 0xff; // UUID
+  memcpy(adv_data + 2, header, 6); // Put sensor data just after UUID values
+  sendDataWithAdvertising(0xFF, adv_data, ADV_DATA_LENGTH, BLE_ADVERTISING_DURATION);
+  // Send sensor data
+  adv_data[0] = 0xff; // UUID
+  adv_data[1] = 0; // UUID
+  memcpy(adv_data + 2, values, 16); // Put sensor data just after UUID values
+  sendDataWithAdvertising(0xFF, adv_data, ADV_DATA_LENGTH, BLE_ADVERTISING_DURATION);
+#endif
+
+  rtc.set_timer_counter(RTC_TIME_INTERVAL); // 30sec time interval
   rtc.set_TIE(true); // Enable RTC countdown timer interrupt signal output on INT pin
   rtc.set_TE(true); // Enable RTC countdown timer interrupt
   sd_power_system_off();
