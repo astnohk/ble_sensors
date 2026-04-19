@@ -1,5 +1,6 @@
 #include <Wire.h>
 #include <bluefruit.h>
+#include <nrf_wdt.h>
 
 //#define USE_SERIAL
 #define USE_8x8
@@ -292,8 +293,74 @@ void connect_callback(uint16_t conn_handle)
   conn_hdl = conn_handle;
 }
 
+void sendDataWithAdvertising(uint8_t type, int8_t *adv_data, size_t len, uint32_t duration)
+{
+  Bluefruit.Advertising.addFlags(BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE); // Use General Discovery Mode to send advertising unlimitedly
+  Bluefruit.Advertising.addData(0xFF, adv_data, 2 + ADVERTISING_RAW_DATA_SIZE); // Put sensor data on advertising
+  Bluefruit.Advertising.start(0);
+
+  delay(BLE_ADVERTISING_DURATION);
+
+  if (conn_hdl != BLE_CONN_HANDLE_INVALID)
+  {
+    Bluefruit.disconnect(conn_hdl);
+  }
+  conn_hdl = BLE_CONN_HANDLE_INVALID;
+  Bluefruit.Advertising.stop();
+  Bluefruit.Advertising.clearData();
+}
+
+uint8_t
+crc8(uint8_t *val, size_t len)
+{
+  const size_t crc_bits = 8; // CRC-8
+  uint8_t remainder = 0;
+  uint8_t bucket = 0;
+  size_t bytes = 0;
+  int msb_flag = 0;
+
+  if (val == NULL)
+  {
+    return 0;
+  }
+  // Calculate CRC remainder
+  if (len > 0)
+  {
+    remainder = val[0];
+    bytes = 1;
+  }
+  for (; bytes <= len; bytes++)
+  {
+    if (bytes < len)
+    {
+      bucket = val[bytes];
+    }
+    else
+    {
+      bucket = 0;
+    }
+    for (int b = 0; b < crc_bits; b++)
+    {
+      msb_flag = remainder & 0x80;
+      remainder = (remainder << 1) | ((bucket & 0x80) ? 1 : 0);
+      bucket <<= 1;
+      if (msb_flag)
+      {
+        remainder = remainder ^ CRC8;
+      }
+    }
+  }
+  return remainder;
+}
+
 void setup()
 {
+  // Set Watch dog timer
+  NRF_WDT->CONFIG = (WDT_CONFIG_SLEEP_Run << WDT_CONFIG_SLEEP_Pos);
+  NRF_WDT->CRV = 10 * 32768;
+  NRF_WDT->RREN = WDT_RREN_RR0_Msk;
+  NRF_WDT->TASKS_START = 1;
+
   // Initialize hardware:
 #ifdef USE_SERIAL
   // Serial is the USB serial port
@@ -367,70 +434,12 @@ void setup()
   Bluefruit.Advertising.setFastTimeout(30);
 
   delay(1000); // Wait for sensing
+  // Kick WDT
+  NRF_WDT->RR[0] = WDT_RR_RR_Reload;
 
 #ifdef USE_SERIAL
   Serial.write("setup is done.\n");
 #endif
-}
-
-void sendDataWithAdvertising(uint8_t type, int8_t *adv_data, size_t len, uint32_t duration)
-{
-  Bluefruit.Advertising.addFlags(BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE); // Use General Discovery Mode to send advertising unlimitedly
-  Bluefruit.Advertising.addData(0xFF, adv_data, 2 + ADVERTISING_RAW_DATA_SIZE); // Put sensor data on advertising
-  Bluefruit.Advertising.start(0);
-
-  delay(BLE_ADVERTISING_DURATION);
-
-  if (conn_hdl != BLE_CONN_HANDLE_INVALID)
-  {
-    Bluefruit.disconnect(conn_hdl);
-  }
-  conn_hdl = BLE_CONN_HANDLE_INVALID;
-  Bluefruit.Advertising.stop();
-  Bluefruit.Advertising.clearData();
-}
-
-uint8_t
-crc8(uint8_t *val, size_t len)
-{
-  const size_t crc_bits = 8; // CRC-8
-  uint8_t remainder = 0;
-  uint8_t bucket = 0;
-  size_t bytes = 0;
-  int msb_flag = 0;
-
-  if (val == NULL)
-  {
-    return 0;
-  }
-  // Calculate CRC remainder
-  if (len > 0)
-  {
-    remainder = val[0];
-    bytes = 1;
-  }
-  for (; bytes <= len; bytes++)
-  {
-    if (bytes < len)
-    {
-      bucket = val[bytes];
-    }
-    else
-    {
-      bucket = 0;
-    }
-    for (int b = 0; b < crc_bits; b++)
-    {
-      msb_flag = remainder & 0x80;
-      remainder = (remainder << 1) | ((bucket & 0x80) ? 1 : 0);
-      bucket <<= 1;
-      if (msb_flag)
-      {
-        remainder = remainder ^ CRC8;
-      }
-    }
-  }
-  return remainder;
 }
 
 void loop()
@@ -453,13 +462,17 @@ void loop()
   adv_data[1] = 0xff; // UUID
   memcpy(adv_data + 2, header, 6); // Put sensor data just after UUID values
   sendDataWithAdvertising(0xFF, adv_data, ADV_DATA_LENGTH, BLE_ADVERTISING_DURATION);
-  // Send data
+  // Kick WDT
+  NRF_WDT->RR[0] = WDT_RR_RR_Reload;
+  // Send sensor data
   for (int i = 0; i < 4; i++)
   {
     adv_data[0] = 0xff; // UUID
     adv_data[1] = i; // UUID
     memcpy(adv_data + 2, values + 16 * i, 16); // Put sensor data just after UUID values
     sendDataWithAdvertising(0xFF, adv_data, ADV_DATA_LENGTH, BLE_ADVERTISING_DURATION);
+    // Kick WDT
+    NRF_WDT->RR[0] = WDT_RR_RR_Reload;
   }
 #else
   // send only 4x4 resampled data
@@ -478,11 +491,15 @@ void loop()
   adv_data[1] = 0xff; // UUID
   memcpy(adv_data + 2, header, 6); // Put sensor data just after UUID values
   sendDataWithAdvertising(0xFF, adv_data, ADV_DATA_LENGTH, BLE_ADVERTISING_DURATION);
+  // Kick WDT
+  NRF_WDT->RR[0] = WDT_RR_RR_Reload;
   // Send sensor data
   adv_data[0] = 0xff; // UUID
   adv_data[1] = 0; // UUID
   memcpy(adv_data + 2, values, 16); // Put sensor data just after UUID values
   sendDataWithAdvertising(0xFF, adv_data, ADV_DATA_LENGTH, BLE_ADVERTISING_DURATION);
+  // Kick WDT
+  NRF_WDT->RR[0] = WDT_RR_RR_Reload;
 #endif
 
   rtc.set_timer_counter(RTC_TIME_INTERVAL); // 30sec time interval
