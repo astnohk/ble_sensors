@@ -7,7 +7,7 @@
 
 uint16_t conn_hdl = BLE_CONN_HANDLE_INVALID;
 
-#define CRC8 0xEA
+#define CRC8 0x07 // CRC-8/SMBus
 #define CRC_BITS 8
 
 // RTC timer interrupt interval [sec]
@@ -187,6 +187,10 @@ public:
   {
     this->wire = _wire;
     this->slave_addr = _slave_addr;
+    for (size_t i = 0; i < 64; i++)
+    {
+      this->values[i] = 0;
+    }
   }
 
   uint8_t values_size(void)
@@ -293,7 +297,7 @@ void connect_callback(uint16_t conn_handle)
   conn_hdl = conn_handle;
 }
 
-void sendDataWithAdvertising(uint8_t type, int8_t *adv_data, size_t len, uint32_t duration)
+void sendDataWithAdvertising(uint8_t type, uint8_t *adv_data, size_t len, uint32_t duration)
 {
   Bluefruit.Advertising.addFlags(BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE); // Use General Discovery Mode to send advertising unlimitedly
   Bluefruit.Advertising.addData(0xFF, adv_data, 2 + ADVERTISING_RAW_DATA_SIZE); // Put sensor data on advertising
@@ -311,15 +315,16 @@ void sendDataWithAdvertising(uint8_t type, int8_t *adv_data, size_t len, uint32_
 }
 
 uint8_t
-crc8(uint8_t *val, size_t len)
+crc8(const void *ptr, size_t len)
 {
+  const uint8_t *val = (uint8_t *)ptr;
   const size_t crc_bits = 8; // CRC-8
   uint8_t remainder = 0;
   uint8_t bucket = 0;
   size_t bytes = 0;
   int msb_flag = 0;
 
-  if (val == NULL)
+  if (val == nullptr)
   {
     return 0;
   }
@@ -446,17 +451,28 @@ void loop()
 {
   // Send 8x8 with multiple advertising
   sensor.read_temperature();
-  int8_t adv_data[ADV_DATA_LENGTH];
+  uint8_t adv_data[ADV_DATA_LENGTH];
 #ifdef USE_8x8
   int8_t *values = sensor.get_values();
   // Generate header
-  int8_t header[ADVERTISING_RAW_DATA_SIZE];
+  uint8_t header[ADVERTISING_RAW_DATA_SIZE];
   header[0] = 4; // packet length
   header[1] = 'C';
   header[2] = 'R';
   header[3] = 'C';
   header[4] = 0x00;
-  header[5] = crc8((uint8_t *)values, 64);
+  header[5] = crc8(values, 64);
+#ifdef USE_SERIAL
+  for (size_t i = 0; i < 8; i++)
+  {
+    for (size_t j = 0; j < 8; j++)
+    {
+      Serial.printf("%x ", values[i]);
+    }
+    Serial.write("\n");
+  }
+  Serial.printf("crc: %x\n", header[5]);
+#endif
   // Send advertising data
   adv_data[0] = 0xff; // UUID
   adv_data[1] = 0xff; // UUID
@@ -479,13 +495,13 @@ void loop()
   sensor.resample4x4();
   int8_t *values = sensor.get_values();
   // Generate header
-  int8_t header[ADVERTISING_RAW_DATA_SIZE];
+  uint8_t header[ADVERTISING_RAW_DATA_SIZE];
   header[0] = 1; // packet length
   header[1] = 'C';
   header[2] = 'R';
   header[3] = 'C';
   header[4] = 0x00;
-  header[5] = crc8((uint8_t *)values, 16);
+  header[5] = crc8(values, 16);
   // Send header
   adv_data[0] = 0xff; // UUID
   adv_data[1] = 0xff; // UUID
