@@ -17,6 +17,7 @@ current_data = {
     "temp-humid": {},
     "grid-eyes": {},
 }
+tmp = {}
 
 class BLEScanner:
     def __init__(self):
@@ -45,7 +46,7 @@ class BLEScanner:
                             "temperature": temperature,
                             "humidity": humidity,
                         }
-                if 0xffff in advertise_data.manufacturer_data.keys():
+                elif 0xffff in advertise_data.manufacturer_data.keys():
                     bytes = advertise_data.manufacturer_data[0xffff]
                     if len(bytes) == 16:
                         thermal_data = [0 for i in range(len(bytes))]
@@ -56,14 +57,77 @@ class BLEScanner:
                             "timestamp": now.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
                             "thermal_data": thermal_data,
                         }
+                elif 0xfeff in advertise_data.manufacturer_data.keys():
+                    # Header of sequential data sending
+                    bytes = advertise_data.manufacturer_data[0xfeff]
+                    if (len(bytes) >= 6 and
+                        bytes[1:5] == b"CRC\x00"
+                    ):
+                        packet_length = int(bytes[0])
+                        tmp[device.address] = {
+                            "timestamp": now.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+                            "name": device.name,
+                            "packet_length": packet_length,
+                            "crc": int(bytes[5]),
+                            "packets": [[] for _ in range(packet_length)],
+                        }
+                if device.address in tmp.keys():
+                    # Maybe a packet of sequential data sending
+                    keys = sorted(list(advertise_data.manufacturer_data.keys()))
+                    for key in keys:
+                        if ((key & 0x8000) > 0 or
+                            (key & 0x00ff) != 0x00ff
+                        ):
+                            # Skip
+                            continue
+                        index = (key & 0xff00) >> 8
+                        bytes = advertise_data.manufacturer_data[key]
+                        ## Parse bytes
+                        data = [0 for i in range(len(bytes))]
+                        for i in range(len(bytes)):
+                            data[i] = int(bytes[i])
+                        ## Append to tmp
+                        tmp[device.address]["packets"][index] = data
+                    ## Move completed tmp data to current_data
+                    if len(tmp[device.address]["packets"]) == tmp[device.address]["packet_length"]:
+                        thermal_data = []
+                        for d in tmp[device.address]["packets"]:
+                            thermal_data.extend(d)
+                        current_data["grid-eyes"][device.address] = {
+                            "name": device.name,
+                            "timestamp": now.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+                            "thermal_data": thermal_data,
+                        }
+                        ## Clear tmp cache
+                        del tmp[device.address]
         except Exception as err:
             logger.error("Failed to read advertisement data.")
             logger.error(err)
 
 async def update_sensors(scanner: BLEScanner):
     while True:
+        # Scan all BLE advertisement
         await scanner.update()
-        await asyncio.sleep(2)
+
+        # Clear old data
+        now = datetime.datetime.now(tz=datetime.timezone.utc)
+        for key in current_data["temp-humid"].keys():
+            timestamp = datetime.datetime.fromisoformat(
+                current_data["temp-humid"][key]["timestamp"])
+            dt = now - timestamp
+            if dt.total_seconds() > 60 * 60 * 24:
+                # Delete old non-updated data
+                del current_data["temp-humid"][key]
+        for key in current_data["grid-eyes"].keys():
+            timestamp = datetime.datetime.fromisoformat(
+                current_data["grid-eyes"][key]["timestamp"])
+            dt = now - timestamp
+            if dt.total_seconds() > 60 * 60 * 24:
+                # Delete old non-updated data
+                del current_data["temp-humid"][key]
+
+        # Wait until next update
+        await asyncio.sleep(1)
 
 def start_ble_receiver(scanner: BLEScanner):
     asyncio.run(update_sensors(scanner))
