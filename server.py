@@ -111,21 +111,24 @@ async def update_sensors(scanner: BLEScanner):
 
         # Clear old data
         now = datetime.datetime.now(tz=datetime.timezone.utc)
-        for key in current_data["temp-humid"].keys():
+        ## Clear old temperature humidity data
+        target_key = "temp-humid"
+        for key in current_data[target_key].keys():
             timestamp = datetime.datetime.fromisoformat(
-                current_data["temp-humid"][key]["timestamp"])
+                current_data[target_key][key]["timestamp"])
             dt = now - timestamp
             if dt.total_seconds() > 60 * 60 * 24:
                 # Delete old non-updated data
-                del current_data["temp-humid"][key]
-        for key in current_data["grid-eyes"].keys():
+                del current_data[target_key][key]
+        ## Clear old Grid-EYE data
+        target_key = "grid-eyes"
+        for key in current_data[target_key].keys():
             timestamp = datetime.datetime.fromisoformat(
-                current_data["grid-eyes"][key]["timestamp"])
+                current_data[target_key][key]["timestamp"])
             dt = now - timestamp
             if dt.total_seconds() > 60 * 60 * 24:
                 # Delete old non-updated data
-                del current_data["temp-humid"][key]
-
+                del current_data[target_key][key]
         # Wait until next update
         await asyncio.sleep(1)
 
