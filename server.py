@@ -113,7 +113,8 @@ async def update_sensors(scanner: BLEScanner):
         now = datetime.datetime.now(tz=datetime.timezone.utc)
         ## Clear old temperature humidity data
         target_key = "temp-humid"
-        for key in current_data[target_key].keys():
+        keys = current_data[target_key].keys()
+        for key in keys:
             timestamp = datetime.datetime.fromisoformat(
                 current_data[target_key][key]["timestamp"])
             dt = now - timestamp
@@ -122,7 +123,8 @@ async def update_sensors(scanner: BLEScanner):
                 del current_data[target_key][key]
         ## Clear old Grid-EYE data
         target_key = "grid-eyes"
-        for key in current_data[target_key].keys():
+        keys = current_data[target_key].keys()
+        for key in keys:
             timestamp = datetime.datetime.fromisoformat(
                 current_data[target_key][key]["timestamp"])
             dt = now - timestamp

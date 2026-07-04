@@ -3,6 +3,7 @@ Description=The BLE Sensors Server
 After=bluetooth.target network.target
 
 [Service]
+SyslogIdentifier=ble_sensors_server
 Type=simple
 WorkingDirectory=ROOTDIR
 ProtectSystem=strict
