@@ -13,10 +13,14 @@ logging.basicConfig(level=logging.INFO)
 
 app = Flask(__name__)
 
-current_data = {
-    "temp-humid": {},
-    "grid-eyes": {},
-}
+current_datas = []
+for i in range(2):
+    current_datas.append({
+        "temp-humid": {},
+        "grid-eyes": {},
+    })
+current_data_idx = 0
+current_data = current_datas[current_data_idx]
 tmp = {}
 
 class BLEScanner:
@@ -105,6 +109,10 @@ class BLEScanner:
             logger.error(err)
 
 async def update_sensors(scanner: BLEScanner):
+    global current_data_idx
+    global current_datas
+    global current_data
+
     while True:
         # Scan all BLE advertisement
         await scanner.update()
@@ -113,6 +121,8 @@ async def update_sensors(scanner: BLEScanner):
         now = datetime.datetime.now(tz=datetime.timezone.utc)
         ## Clear old temperature humidity data
         target_key = "temp-humid"
+        current_data_idx = (current_data_idx + 1) % 2
+        current_data = current_datas[current_data_idx]
         keys = current_data[target_key].keys()
         for key in keys:
             timestamp = datetime.datetime.fromisoformat(
