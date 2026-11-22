@@ -121,8 +121,14 @@ async def update_sensors(scanner: BLEScanner):
         now = datetime.datetime.now(tz=datetime.timezone.utc)
         ## Clear old temperature humidity data
         target_key = "temp-humid"
-        current_data_idx = (current_data_idx + 1) % 2
+        ## Shift ping ponb buffer
+        ### Copy new data to old buffer
+        current_data_idx_next = (current_data_idx + 1) % 2
+        current_datas[current_data_idx_next] = copy.deepcopy(current_datas[current_data_idx])
+        ### Shift ping pong buffer
+        current_data_idx = current_data_idx_next
         current_data = current_datas[current_data_idx]
+
         keys = current_data[target_key].keys()
         for key in keys:
             timestamp = datetime.datetime.fromisoformat(
